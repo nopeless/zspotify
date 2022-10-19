@@ -934,7 +934,7 @@ def download_from_user_playlist():
 def check_raw():
     global RAW_AUDIO_AS_IS, MUSIC_FORMAT
     if RAW_AUDIO_AS_IS:
-        MUSIC_FORMAT = "wav"
+        MUSIC_FORMAT = "ogg"
 
 
 def main():
