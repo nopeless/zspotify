@@ -64,7 +64,7 @@ Special hardcoded options:
   SKIP_EXISTING_FILES Set this to False if you want ZSpotify to overwrite files with the same name rather than skipping the song
 
   MUSIC_FORMAT        Set this to "ogg" if you would rather that format audio over "mp3"
-  RAW_AUDIO_AS_IS     Set this to True to only stream the audio to a file and do no re-encoding or post processing
+  RAW_AUDIO_AS_IS     Set this to "n" to re-encode to mp3
   
   FORCE_PREMIUM       Set this to True if ZSpotify isn't automatically detecting that you are using a premium account
   
