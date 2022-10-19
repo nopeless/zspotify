@@ -51,7 +51,7 @@ Python packages:
 
 ```
 Command line usage:
-  python zspotify.py                              Loads search prompt to find then download a specific track, album or playlist
+  python zspotify.py [ link ]                     If no link is provided, it loads a search prompt to find then download a specific track, album or playlist
 
 Extra command line options:
   -p, --playlist       Downloads a saved playlist from your account
