@@ -122,7 +122,8 @@ def login():
         password = getpass()
         try:
             SESSION = Session.Builder().user_pass(user_name, password).create()
-            shutil.copyfile('credentials.json',CREDENTIALS)
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            shutil.copyfile('credentials.json', CREDENTIALS)
             return
         except RuntimeError:
             pass
