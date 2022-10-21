@@ -28,7 +28,7 @@ from tqdm import tqdm
 from appdirs import user_config_dir
 
 SESSION: Session = None
-sanitize = ["\\", "/", ":", "*", "?", "'", "<", ">", '"']
+sanitize = ["\\", "/", ":", "*", "?", "<", ">", '"']
 
 
 CONFIG_DIR = user_config_dir("ZSpotify")
@@ -76,8 +76,11 @@ def wait(seconds: int = 3):
 def sanitize_data(value):
     """ Returns given string with problematic removed """
     global sanitize
-    for i in sanitize:
-        value = value.replace(i, "")
+    if platform.system() == "Windows":
+        for i in sanitize:
+            value = value.replace(i, "")
+    else:
+        value = value.replace("/", "")
     return value.replace("|", "-")
 
 
