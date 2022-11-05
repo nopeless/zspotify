@@ -73,6 +73,13 @@ def wait(seconds: int = 3):
         time.sleep(1)
 
 
+def antiban_wait():
+    """ Pause between albums for a set number of seconds """
+    for i in range(ANTI_BAN_WAIT_TIME_ALBUMS)[::-1]:
+        print("\rWait for Next Download in %d second(s)..." % (i + 1), end="")
+        time.sleep(1)
+
+
 def sanitize_data(value):
     """ Returns given string with problematic removed """
     global sanitize
@@ -513,9 +520,8 @@ def search(search_term):
                         year = re.search('(\d{4})', album['release_date']).group(1)
                         print(f"\n\n\n{i}/{total_albums_downloads} {album['artists'][0]['name']} - ({year}) {album['name']} [{album['total_tracks']}]")
                         download_album(album['id'])
-                        for i in range(ANTI_BAN_WAIT_TIME_ALBUMS)[::-1]:
-                            print("\rWait for Next Download in %d second(s)..." % (i + 1), end="")
-                            time.sleep(1)
+                        antiban_wait()
+
 
 def get_song_info(song_id):
     """ Retrieves metadata for downloaded songs """
