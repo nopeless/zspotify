@@ -40,7 +40,9 @@ SKIP_EXISTING_FILES = True
 SKIP_PREVIOUSLY_DOWNLOADED = True
 MUSIC_FORMAT = os.getenv('MUSIC_FORMAT') or "mp3" # "mp3" | "ogg"
 FORCE_PREMIUM = False # set to True if not detecting your premium account automatically
-RAW_AUDIO_AS_IS = False or os.getenv('RAW_AUDIO_AS_IS') == "y" # set to True if you wish you save the raw audio without re-encoding it.
+RAW_AUDIO_AS_IS = True # set to False if you wish you save the raw audio without re-encoding it.
+if os.getenv('RAW_AUDIO_AS_IS') != None and os.getenv('RAW_AUDIO_AS_IS') != "y":
+    RAW_AUDIO_AS_IS = False
 # This is how many seconds ZSpotify waits between downloading tracks so spotify doesn't get out the ban hammer
 ANTI_BAN_WAIT_TIME = 5
 ANTI_BAN_WAIT_TIME_ALBUMS = 30
@@ -127,7 +129,8 @@ def login():
         password = getpass()
         try:
             SESSION = Session.Builder().user_pass(user_name, password).create()
-            shutil.copyfile('credentials.json',CREDENTIALS)
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            shutil.copyfile('credentials.json', CREDENTIALS)
             return
         except RuntimeError:
             pass
@@ -947,7 +950,7 @@ def download_from_user_playlist():
 def check_raw():
     global RAW_AUDIO_AS_IS, MUSIC_FORMAT
     if RAW_AUDIO_AS_IS:
-        MUSIC_FORMAT = "wav"
+        MUSIC_FORMAT = "ogg"
 
 
 def main():
