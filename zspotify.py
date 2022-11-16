@@ -531,12 +531,19 @@ def get_song_info(song_id):
         info = json.loads(requests.get("https://api.spotify.com/v1/tracks?ids=" + song_id +
                         '&market=from_token', headers={"Authorization": "Bearer %s" % token}).text)
 
+        #Sum the size of the images, compares and saves the index of the largest image size
+        sum_total = []
+        for sum_px in info['tracks'][0]['album']['images']:
+            sum_total.append(sum_px['height'] + sum_px['width'])
+
+        img_index = sum_total.index(max(sum_total))
+        
         artists = []
         for data in info['tracks'][0]['artists']:
             artists.append(sanitize_data(data['name']))
         album_name = sanitize_data(info['tracks'][0]['album']["name"])
         name = sanitize_data(info['tracks'][0]['name'])
-        image_url = info['tracks'][0]['album']['images'][2]['url']
+        image_url = info['tracks'][0]['album']['images'][img_index]['url']
         release_year = info['tracks'][0]['album']['release_date'].split("-")[0]
         disc_number = info['tracks'][0]['disc_number']
         track_number = info['tracks'][0]['track_number']
