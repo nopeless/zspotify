@@ -344,7 +344,7 @@ def get_show_episodes(access_token, show_id_str):
 
 
 def download_episode(episode_id_str):
-    global ROOT_PODCAST_PATH, MUSIC_FORMAT
+    global ROOT_PODCAST_PATH, MUSIC_FORMAT, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED
 
     podcast_name, episode_name = get_episode_info(episode_id_str)
 
@@ -352,6 +352,16 @@ def download_episode(episode_id_str):
 
     if podcast_name is None:
         print("###   SKIPPING: (EPISODE NOT FOUND)   ###")
+
+    check_all_time = episode_id_str in get_previously_downloaded()
+    target_file = ROOT_PODCAST_PATH + extra_paths + podcast_name + " - " + episode_name + ".wav"
+
+    if os.path.isfile(target_file) and os.path.getsize(target_file) and SKIP_EXISTING_FILES:
+        print("###   SKIPPING: (EPISODE ALREADY EXISTS) :", episode_name, "   ###")
+
+    elif check_all_time and SKIP_PREVIOUSLY_DOWNLOADED:
+        print('###   SKIPPING: ' + episode_name + ' (EPISODE ALREADY DOWNLOADED ONCE)   ###')
+
     else:
         filename = podcast_name + " - " + episode_name
 
@@ -388,6 +398,8 @@ def download_episode(episode_id_str):
                     fail += 1
                 if fail > REINTENT_DOWNLOAD:
                     break
+                    
+            add_to_archive(episode_id_str, filename, podcast_name, episode_name)
 
                 
         #file.write(stream.input_stream.stream().read())
@@ -995,5 +1007,4 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as error:
         print(f"[!] ERROR {error} ")
-
 
