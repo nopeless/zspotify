@@ -399,7 +399,7 @@ def download_episode(episode_id_str):
                 if fail > REINTENT_DOWNLOAD:
                     break
                     
-            add_to_archive(episode_id_str, filename, podcast_name, episode_name)
+            add_to_archive(episode_id_str, filename, podcast_name, episode_name, "episode")
 
                 
         #file.write(stream.input_stream.stream().read())
@@ -773,10 +773,13 @@ def get_previously_downloaded() -> list[str]:
 
     return ids
 
-def add_to_archive(song_id: str, filename: str, author_name: str, song_name: str) -> None:
+def add_to_archive(song_id: str, filename: str, author_name: str, song_name: str, mediatype="song") -> None:
     """ Adds song id to all time installed songs archive """
-
-    archive_path = os.path.join(os.path.dirname(__file__), ROOT_PATH, '.song_archive')
+    archive_path = ""
+    if "song" in mediatype:
+        archive_path = os.path.join(os.path.dirname(__file__), ROOT_PATH, '.song_archive')
+    else:
+        archive_path = os.path.join(os.path.dirname(__file__), ROOT_PODCAST_PATH, '.episode_archive')
 
     if os.path.exists(archive_path):
         with open(archive_path, 'a', encoding='utf-8') as file:
