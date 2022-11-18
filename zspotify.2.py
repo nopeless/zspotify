@@ -18,6 +18,7 @@ import shutil
 from getpass import getpass
 import datetime
 
+import music_tag
 import requests
 from librespot.audio.decoders import AudioQuality, VorbisOnlyAudioQuality
 from librespot.core import Session
@@ -25,15 +26,6 @@ from librespot.metadata import TrackId, EpisodeId
 from pydub import AudioSegment
 from tqdm import tqdm
 from appdirs import user_config_dir
-
-# Change to True to use mutagen directly rather than through music_tag layer.
-USE_MUTAGEN = True 
-
-if USE_MUTAGEN:
-    from mutagen.id3 import ID3, TPE1, TIT2, TRCK, TALB, APIC, TPE2, TDRC, TDOR, TPOS, COMM, TCON
-else:
-    import music_tag
-
 
 SESSION: Session = None
 sanitize = ["\\", "/", ":", "*", "?", "'", "<", ">", '"']
@@ -48,9 +40,7 @@ SKIP_EXISTING_FILES = True
 SKIP_PREVIOUSLY_DOWNLOADED = True
 MUSIC_FORMAT = os.getenv('MUSIC_FORMAT') or "mp3" # "mp3" | "ogg"
 FORCE_PREMIUM = False # set to True if not detecting your premium account automatically
-RAW_AUDIO_AS_IS = False # set to False if you wish you save the raw audio without re-encoding it.
-if os.getenv('RAW_AUDIO_AS_IS') != None and os.getenv('RAW_AUDIO_AS_IS') != "y":
-    RAW_AUDIO_AS_IS = False
+RAW_AUDIO_AS_IS = False or os.getenv('RAW_AUDIO_AS_IS') == "y" # set to True if you wish you save the raw audio without re-encoding it.
 # This is how many seconds ZSpotify waits between downloading tracks so spotify doesn't get out the ban hammer
 ANTI_BAN_WAIT_TIME = 5
 ANTI_BAN_WAIT_TIME_ALBUMS = 30
@@ -64,7 +54,6 @@ LIMIT = 50
 
 requests.adapters.DEFAULT_RETRIES = 10
 REINTENT_DOWNLOAD = 30
-IS_PODCAST = False
 
 # miscellaneous functions for general use
 
@@ -81,13 +70,6 @@ def wait(seconds: int = 3):
     """ Pause for a set number of seconds """
     for i in range(seconds)[::-1]:
         print("\rWait for %d second(s)..." % (i + 1), end="")
-        time.sleep(1)
-
-
-def antiban_wait():
-    """ Pause between albums for a set number of seconds """
-    for i in range(ANTI_BAN_WAIT_TIME_ALBUMS)[::-1]:
-        print("\rWait for Next Download in %d second(s)..." % (i + 1), end="")
         time.sleep(1)
 
 
@@ -138,8 +120,7 @@ def login():
         password = getpass()
         try:
             SESSION = Session.Builder().user_pass(user_name, password).create()
-            os.makedirs(CONFIG_DIR, exist_ok=True)
-            shutil.copyfile('credentials.json', CREDENTIALS)
+            shutil.copyfile('credentials.json',CREDENTIALS)
             return
         except RuntimeError:
             pass
@@ -355,26 +336,14 @@ def get_show_episodes(access_token, show_id_str):
 
 
 def download_episode(episode_id_str):
-    global ROOT_PODCAST_PATH, MUSIC_FORMAT, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED, IS_PODCAST
-
-    IS_PODCAST = True
+    global ROOT_PODCAST_PATH, MUSIC_FORMAT
 
     podcast_name, episode_name = get_episode_info(episode_id_str)
 
     extra_paths = podcast_name + "/"
 
-    check_all_time = episode_id_str in get_previously_downloaded()
-    target_file = ROOT_PODCAST_PATH + extra_paths + podcast_name + " - " + episode_name + ".wav"
- 
     if podcast_name is None:
         print("###   SKIPPING: (EPISODE NOT FOUND)   ###")
-
-    elif os.path.isfile(target_file) and os.path.getsize(target_file) and SKIP_EXISTING_FILES:
-        print("###   SKIPPING: (EPISODE ALREADY EXISTS) :", episode_name, "   ###")
-
-    elif check_all_time and SKIP_PREVIOUSLY_DOWNLOADED:
-        print('###   SKIPPING: ' + episode_name + ' (EPISODE ALREADY DOWNLOADED ONCE)   ###')
-
     else:
         filename = podcast_name + " - " + episode_name
 
@@ -411,9 +380,6 @@ def download_episode(episode_id_str):
                     fail += 1
                 if fail > REINTENT_DOWNLOAD:
                     break
-                    
-            add_to_archive(episode_id_str, filename, podcast_name, episode_name)
-            IS_PODCAST = False
 
                 
         #file.write(stream.input_stream.stream().read())
@@ -547,8 +513,9 @@ def search(search_term):
                         year = re.search('(\d{4})', album['release_date']).group(1)
                         print(f"\n\n\n{i}/{total_albums_downloads} {album['artists'][0]['name']} - ({year}) {album['name']} [{album['total_tracks']}]")
                         download_album(album['id'])
-                        antiban_wait()
-
+                        for i in range(ANTI_BAN_WAIT_TIME_ALBUMS)[::-1]:
+                            print("\rWait for Next Download in %d second(s)..." % (i + 1), end="")
+                            time.sleep(1)
 
 def get_song_info(song_id):
     """ Retrieves metadata for downloaded songs """
@@ -558,19 +525,12 @@ def get_song_info(song_id):
         info = json.loads(requests.get("https://api.spotify.com/v1/tracks?ids=" + song_id +
                         '&market=from_token', headers={"Authorization": "Bearer %s" % token}).text)
 
-        #Sum the size of the images, compares and saves the index of the largest image size
-        sum_total = []
-        for sum_px in info['tracks'][0]['album']['images']:
-            sum_total.append(sum_px['height'] + sum_px['width'])
-
-        img_index = sum_total.index(max(sum_total))
-        
         artists = []
         for data in info['tracks'][0]['artists']:
             artists.append(sanitize_data(data['name']))
         album_name = sanitize_data(info['tracks'][0]['album']["name"])
         name = sanitize_data(info['tracks'][0]['name'])
-        image_url = info['tracks'][0]['album']['images'][img_index]['url']
+        image_url = info['tracks'][0]['album']['images'][2]['url']
         release_year = info['tracks'][0]['album']['release_date'].split("-")[0]
         disc_number = info['tracks'][0]['disc_number']
         track_number = info['tracks'][0]['track_number']
@@ -614,36 +574,6 @@ def set_audio_tags(filename, artists, name, album_name, release_year, disc_numbe
     tags['discnumber'] = disc_number
     tags['tracknumber'] = track_number
     tags['comment'] = 'id[spotify.com:track:'+track_id_str+']'
-    tags.save()
-
-
-def set_audio_tags_mutagen(filename, artists, name, album_name, release_year, disc_number, track_number, track_id_str, image_url):
-    """ sets music_tag metadata using mutagen """
-    albumart = requests.get(image_url).content
-    artist = conv_artist_format(artists)
-    check_various_artists = "Various Artists" in filename
-    if check_various_artists:
-        album_artist = "Various Artists"
-    else:
-        album_artist = artist
-
-    tags = ID3(filename)
-    tags['TPE1'] = TPE1(encoding=3, text=artist)             # TPE1 Lead Artist/Performer/Soloist/Group
-    tags['TIT2'] = TIT2(encoding=3, text=name)               # TIT2 Title/songname/content description
-    tags['TALB'] = TALB(encoding=3, text=album_name)         # TALB Album/Movie/Show title
-    tags['TDRC'] = TDRC(encoding=3, text=release_year)       # TDRC Recording time
-    tags['TDOR'] = TDOR(encoding=3, text=release_year)       # TDOR Original release time
-    tags['TPOS'] = TPOS(encoding=3, text=str(disc_number))   # TPOS Part of a set
-    tags['TRCK'] = TRCK(encoding=3, text=str(track_number))  # TRCK Track number/Position in set
-    tags['COMM'] = COMM(encoding=3, lang=u'eng', text=u'id[spotify.com:track:'+track_id_str+']') #COMM User comment
-    tags['TPE2'] = TPE2(encoding=3, text=album_artist)       # TPE2 Band/orchestra/accompaniment
-    tags['APIC'] = APIC(                                     # APIC Attached (or linked) Picture.
-                        encoding=3,
-                        mime='image/jpeg',
-                        type=3,
-                        desc=u'0',
-                        data=requests.get(image_url).content)
-   #tags['TCON'] = TCON(encoding=3, text=genre)              # TCON Genre - TODO
     tags.save()
 
 
@@ -782,13 +712,10 @@ def get_saved_tracks(access_token):
 def get_previously_downloaded() -> list[str]:
     """ Returns list of all time downloaded songs, sourced from the hidden archive file located at the download
     location. """
-    global ROOT_PATH, ROOT_PODCAST_PATH, IS_PODCAST
+    global ROOT_PATH
 
     ids = []
-    if not IS_PODCAST:
-        archive_path = os.path.join(ROOT_PATH, '.song_archive')
-    else:
-        archive_path = os.path.join(ROOT_PODCAST_PATH, '.episode_archive')
+    archive_path = os.path.join(ROOT_PATH, '.song_archive')
 
     if os.path.exists(archive_path):
         with open(archive_path, 'r', encoding='utf-8') as f:
@@ -798,11 +725,8 @@ def get_previously_downloaded() -> list[str]:
 
 def add_to_archive(song_id: str, filename: str, author_name: str, song_name: str) -> None:
     """ Adds song id to all time installed songs archive """
-    archive_path = ""
-    if not IS_PODCAST:
-        archive_path = os.path.join(os.path.dirname(__file__), ROOT_PATH, '.song_archive')
-    else:
-        archive_path = os.path.join(os.path.dirname(__file__), ROOT_PODCAST_PATH, '.episode_archive')
+
+    archive_path = os.path.join(os.path.dirname(__file__), ROOT_PATH, '.song_archive')
 
     if os.path.exists(archive_path):
         with open(archive_path, 'a', encoding='utf-8') as file:
@@ -895,13 +819,9 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
 
                     if not RAW_AUDIO_AS_IS:
                         convert_audio_format(filename)
-                        if USE_MUTAGEN:
-                            set_audio_tags_mutagen(filename, artists, name, album_name,
-                                           release_year, disc_number, track_number, track_id_str, image_url)
-                        else:
-                            set_audio_tags(filename, artists, name, album_name,
-                                           release_year, disc_number, track_number, track_id_str)
-                            set_music_thumbnail(filename, image_url)
+                        set_audio_tags(filename, artists, name, album_name,
+                                       release_year, disc_number, track_number, track_id_str)
+                        set_music_thumbnail(filename, image_url)
 
                     if not OVERRIDE_AUTO_WAIT:
                         time.sleep(ANTI_BAN_WAIT_TIME)
@@ -1014,7 +934,7 @@ def download_from_user_playlist():
 def check_raw():
     global RAW_AUDIO_AS_IS, MUSIC_FORMAT
     if RAW_AUDIO_AS_IS:
-        MUSIC_FORMAT = "ogg"
+        MUSIC_FORMAT = "wav"
 
 
 def main():
@@ -1033,4 +953,5 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as error:
         print(f"[!] ERROR {error} ")
+
 
