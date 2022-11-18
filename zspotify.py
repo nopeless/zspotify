@@ -62,6 +62,7 @@ LIMIT = 50
 
 requests.adapters.DEFAULT_RETRIES = 10
 REINTENT_DOWNLOAD = 30
+IS_PODCAST = False
 
 # miscellaneous functions for general use
 
@@ -344,19 +345,21 @@ def get_show_episodes(access_token, show_id_str):
 
 
 def download_episode(episode_id_str):
-    global ROOT_PODCAST_PATH, MUSIC_FORMAT, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED
+    global ROOT_PODCAST_PATH, MUSIC_FORMAT, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED, IS_PODCAST
+
+    IS_PODCAST = True
 
     podcast_name, episode_name = get_episode_info(episode_id_str)
 
     extra_paths = podcast_name + "/"
 
+    check_all_time = episode_id_str in get_previously_downloaded()
+    target_file = ROOT_PODCAST_PATH + extra_paths + podcast_name + " - " + episode_name + ".wav"
+ 
     if podcast_name is None:
         print("###   SKIPPING: (EPISODE NOT FOUND)   ###")
 
-    check_all_time = episode_id_str in get_previously_downloaded()
-    target_file = ROOT_PODCAST_PATH + extra_paths + podcast_name + " - " + episode_name + ".wav"
-
-    if os.path.isfile(target_file) and os.path.getsize(target_file) and SKIP_EXISTING_FILES:
+    elif os.path.isfile(target_file) and os.path.getsize(target_file) and SKIP_EXISTING_FILES:
         print("###   SKIPPING: (EPISODE ALREADY EXISTS) :", episode_name, "   ###")
 
     elif check_all_time and SKIP_PREVIOUSLY_DOWNLOADED:
@@ -399,7 +402,8 @@ def download_episode(episode_id_str):
                 if fail > REINTENT_DOWNLOAD:
                     break
                     
-            add_to_archive(episode_id_str, filename, podcast_name, episode_name, "episode")
+            add_to_archive(episode_id_str, filename, podcast_name, episode_name)
+            IS_PODCAST = False
 
                 
         #file.write(stream.input_stream.stream().read())
@@ -762,10 +766,13 @@ def get_saved_tracks(access_token):
 def get_previously_downloaded() -> list[str]:
     """ Returns list of all time downloaded songs, sourced from the hidden archive file located at the download
     location. """
-    global ROOT_PATH
+    global ROOT_PATH, ROOT_PODCAST_PATH, IS_PODCAST
 
     ids = []
-    archive_path = os.path.join(ROOT_PATH, '.song_archive')
+    if not IS_PODCAST:
+        archive_path = os.path.join(ROOT_PATH, '.song_archive')
+    else:
+        archive_path = os.path.join(ROOT_PODCAST_PATH, '.episode_archive')
 
     if os.path.exists(archive_path):
         with open(archive_path, 'r', encoding='utf-8') as f:
@@ -773,10 +780,10 @@ def get_previously_downloaded() -> list[str]:
 
     return ids
 
-def add_to_archive(song_id: str, filename: str, author_name: str, song_name: str, mediatype="song") -> None:
+def add_to_archive(song_id: str, filename: str, author_name: str, song_name: str) -> None:
     """ Adds song id to all time installed songs archive """
     archive_path = ""
-    if "song" in mediatype:
+    if not IS_PODCAST:
         archive_path = os.path.join(os.path.dirname(__file__), ROOT_PATH, '.song_archive')
     else:
         archive_path = os.path.join(os.path.dirname(__file__), ROOT_PODCAST_PATH, '.episode_archive')
