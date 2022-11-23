@@ -326,11 +326,20 @@ def get_episode_info(episode_id_str):
     info = json.loads(requests.get("https://api.spotify.com/v1/episodes/" +
                                    episode_id_str, headers={"Authorization": "Bearer %s" % token}).text)
 
+    sum_total = []
+    for sum_px in info['images']:
+        sum_total.append(sum_px['height'] + sum_px['width'])
+
+    img_index = sum_total.index(max(sum_total))
+    image_url = info['images'][img_index]['url']
+    release_date = info["release_date"]
+    scraped_episode_id = info['id']
+
     if "error" in info:
         return None, None
     else:
         # print(info['images'][0]['url'])
-        return sanitize_data(info["show"]["name"]), sanitize_data(info["name"])
+        return sanitize_data(info["show"]["name"]), sanitize_data(info["name"]), image_url, release_date, scraped_episode_id
 
 
 def get_show_episodes(access_token, show_id_str):
@@ -355,29 +364,28 @@ def get_show_episodes(access_token, show_id_str):
 
 
 def download_episode(episode_id_str):
-    global ROOT_PODCAST_PATH, MUSIC_FORMAT, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED, IS_PODCAST
+    global ROOT_PODCAST_PATH, MUSIC_FORMAT, RAW_AUDIO_AS_IS, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED, IS_PODCAST
 
     IS_PODCAST = True
 
-    podcast_name, episode_name = get_episode_info(episode_id_str)
-
-    extra_paths = podcast_name + "/"
-
+    podcast_name, episode_name, image_url, release_date, scraped_episode_id = get_episode_info(episode_id_str)
     check_all_time = episode_id_str in get_previously_downloaded()
-    target_file = ROOT_PODCAST_PATH + extra_paths + podcast_name + " - " + episode_name + ".wav"
+    episode_filename_raw = f'{podcast_name}-{episode_name}.ogg'
+    episode_filename = f'{podcast_name}-{episode_name}.{MUSIC_FORMAT}'
+    filename = os.path.join(ROOT_PODCAST_PATH, podcast_name, episode_filename)
+    filename_raw = os.path.join(ROOT_PODCAST_PATH, podcast_name, episode_filename_raw)
+   # target_file = ROOT_PODCAST_PATH + extra_paths + podcast_name + " - " + episode_name + ".wav"
  
     if podcast_name is None:
         print("###   SKIPPING: (EPISODE NOT FOUND)   ###")
 
-    elif os.path.isfile(target_file) and os.path.getsize(target_file) and SKIP_EXISTING_FILES:
+    elif os.path.isfile(filename) and os.path.getsize(filename) and SKIP_EXISTING_FILES:
         print("###   SKIPPING: (EPISODE ALREADY EXISTS) :", episode_name, "   ###")
 
     elif check_all_time and SKIP_PREVIOUSLY_DOWNLOADED:
         print('###   SKIPPING: ' + episode_name + ' (EPISODE ALREADY DOWNLOADED ONCE)   ###')
 
     else:
-        filename = podcast_name + " - " + episode_name
-
         episode_id = EpisodeId.from_base62(episode_id_str)
         stream = SESSION.content_feeder().load(
             episode_id, VorbisOnlyAudioQuality(QUALITY), False, None)
@@ -385,7 +393,7 @@ def download_episode(episode_id_str):
         #      episode_name + "' - THIS MAY TAKE A WHILE ###")
 
         #if not os.path.isdir(ROOT_PODCAST_PATH + extra_paths):
-        os.makedirs(ROOT_PODCAST_PATH + extra_paths,exist_ok=True)
+        os.makedirs(os.path.join(ROOT_PODCAST_PATH, podcast_name),exist_ok=True)
 
         total_size = stream.input_stream.size
         data_left = total_size
@@ -393,8 +401,8 @@ def download_episode(episode_id_str):
         _CHUNK_SIZE = CHUNK_SIZE
         fail = 0
 
-        with open(ROOT_PODCAST_PATH + extra_paths + filename + ".wav", 'wb') as file, tqdm(
-                desc=filename,
+        with open(filename_raw, 'wb') as file, tqdm(
+                desc=episode_name,
                 total=total_size,
                 unit='B',
                 unit_scale=True,
@@ -411,8 +419,23 @@ def download_episode(episode_id_str):
                     fail += 1
                 if fail > REINTENT_DOWNLOAD:
                     break
-                    
+
+            file.close() # Windoze needs.
+
+            if not RAW_AUDIO_AS_IS and not "ogg" in MUSIC_FORMAT:
+                convert_audio_format(filename_raw, filename)
+                set_audio_tags_mutagen(filename, "", episode_name, podcast_name, release_date, "", "", scraped_episode_id, image_url)
+                
+                if os.path.exists(filename_raw):
+                    os.remove(filename_raw)
+
+            if not RAW_AUDIO_AS_IS and "ogg" in MUSIC_FORMAT:
+                # TODO - add ogg tagging to set_audio_tags_mutagen
+                #set_audio_tags_mutagen(filename, "", episode_name, podcast_name, release_date, "", "", scraped_episode_id, image_url)
+                foo = "bar"
+
             add_to_archive(episode_id_str, filename, podcast_name, episode_name)
+
             IS_PODCAST = False
 
                 
@@ -590,17 +613,17 @@ def check_premium():
 
 
 # Functions directly related to modifying the downloaded audio and its metadata
-def convert_audio_format(filename):
+def convert_audio_format(fromfilename, tofilename):
     """ Converts raw audio into playable mp3 or ogg vorbis """
     global MUSIC_FORMAT
     #print("###   CONVERTING TO " + MUSIC_FORMAT.upper() + "   ###")
-    raw_audio = AudioSegment.from_file(filename, format="ogg",
+    raw_audio = AudioSegment.from_file(fromfilename, format="ogg",
                                        frame_rate=44100, channels=2, sample_width=2)
     if QUALITY == AudioQuality.VERY_HIGH:
         bitrate = "320k"
     else:
         bitrate = "160k"
-    raw_audio.export(filename, format=MUSIC_FORMAT, bitrate=bitrate)
+    raw_audio.export(tofilename, format=MUSIC_FORMAT, bitrate=bitrate)
 
 
 def set_audio_tags(filename, artists, name, album_name, release_year, disc_number, track_number, track_id_str):
@@ -627,6 +650,11 @@ def set_audio_tags_mutagen(filename, artists, name, album_name, release_year, di
     else:
         album_artist = artist
 
+    if IS_PODCAST:
+        track_id_str = "id[spotify.com:show:" + track_id_str + "]"
+    else:
+        track_id_str = "id[spotify.com:track:" + track_id_str + "]"
+
     tags = ID3(filename)
     tags['TPE1'] = TPE1(encoding=3, text=artist)             # TPE1 Lead Artist/Performer/Soloist/Group
     tags['TIT2'] = TIT2(encoding=3, text=name)               # TIT2 Title/songname/content description
@@ -635,7 +663,7 @@ def set_audio_tags_mutagen(filename, artists, name, album_name, release_year, di
     tags['TDOR'] = TDOR(encoding=3, text=release_year)       # TDOR Original release time
     tags['TPOS'] = TPOS(encoding=3, text=str(disc_number))   # TPOS Part of a set
     tags['TRCK'] = TRCK(encoding=3, text=str(track_number))  # TRCK Track number/Position in set
-    tags['COMM'] = COMM(encoding=3, lang=u'eng', text=u'id[spotify.com:track:'+track_id_str+']') #COMM User comment
+    tags['COMM'] = COMM(encoding=3, lang=u'eng', text=u'' + track_id_str + '') #COMM User comment
     tags['TPE2'] = TPE2(encoding=3, text=album_artist)       # TPE2 Band/orchestra/accompaniment
     tags['APIC'] = APIC(                                     # APIC Attached (or linked) Picture.
                         encoding=3,
@@ -782,7 +810,7 @@ def get_saved_tracks(access_token):
 def get_previously_downloaded() -> list[str]:
     """ Returns list of all time downloaded songs, sourced from the hidden archive file located at the download
     location. """
-    global ROOT_PATH, ROOT_PODCAST_PATH, IS_PODCAST
+    global ROOT_PATH, ROOT_PODCAST_PATH
 
     ids = []
     if not IS_PODCAST:
@@ -871,7 +899,9 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
                     downloaded = 0
                     _CHUNK_SIZE = CHUNK_SIZE
                     fail = 0
-                    with open(filename, 'wb') as file, tqdm(
+                    #Stream is Vorbis, force ogg ext. to use for conversion
+                    filename_raw = filename[:-3] + "ogg"
+                    with open(filename_raw, 'wb') as file, tqdm(
                             desc=song_name,
                             total=total_size,
                             unit='B',
@@ -893,8 +923,8 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
                                 break
 
 
-                    if not RAW_AUDIO_AS_IS:
-                        convert_audio_format(filename)
+                    if not RAW_AUDIO_AS_IS and not "ogg" in MUSIC_FORMAT:
+                        convert_audio_format(filename_raw, filename)
                         if USE_MUTAGEN:
                             set_audio_tags_mutagen(filename, artists, name, album_name,
                                            release_year, disc_number, track_number, track_id_str, image_url)
@@ -903,6 +933,13 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
                                            release_year, disc_number, track_number, track_id_str)
                             set_music_thumbnail(filename, image_url)
 
+                        # "Raw" ogg not needed, we have a mp3 now
+                        if os.path.exists(filename_raw):
+                            os.remove(filename_raw)
+ 
+                    if not RAW_AUDIO_AS_IS and "ogg" in MUSIC_FORMAT:
+                        print("TODO - Send OGG file to be tagged.")
+ 
                     if not OVERRIDE_AUTO_WAIT:
                         time.sleep(ANTI_BAN_WAIT_TIME)
 
