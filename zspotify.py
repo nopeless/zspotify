@@ -573,6 +573,18 @@ def search(search_term):
                         antiban_wait()
 
 
+def get_artist_info(artist_id):
+    """ Retrieves metadata for downloaded songs """
+    token = SESSION.tokens().get("user-read-email")
+    try:
+        info = json.loads(requests.get("https://api.spotify.com/v1/artists/" + artist_id, headers={"Authorization": "Bearer %s" % token}).text)
+        return info
+    except Exception as e:
+        print("###   get_artist_info - FAILED TO QUERY METADATA   ###")
+        print(e)
+        print(artist_id,info)
+
+
 def get_song_info(song_id):
     """ Retrieves metadata for downloaded songs """
     token = SESSION.tokens().get("user-read-email")
@@ -588,6 +600,7 @@ def get_song_info(song_id):
 
         img_index = sum_total.index(max(sum_total))
         
+        artist_id = info['tracks'][0]['artists'][0]['id']
         artists = []
         for data in info['tracks'][0]['artists']:
             artists.append(sanitize_data(data['name']))
@@ -600,7 +613,7 @@ def get_song_info(song_id):
         scraped_song_id = info['tracks'][0]['id']
         is_playable = info['tracks'][0]['is_playable']
 
-        return artists, album_name, name, image_url, release_year, disc_number, track_number, scraped_song_id, is_playable
+        return artists, album_name, name, image_url, release_year, disc_number, track_number, scraped_song_id, is_playable, artist_id
     except Exception as e:
         print("###   get_song_info - FAILED TO QUERY METADATA   ###")
         print(e)
@@ -654,6 +667,10 @@ def set_audio_tags_mutagen(filename, artists, name, album_name, release_year, di
         track_id_str = "id[spotify.com:show:" + track_id_str + "]"
     else:
         track_id_str = "id[spotify.com:track:" + track_id_str + "]"
+    
+    genre = "Unknown"
+    if META_GENRE:
+        genre = META_GENRE
 
     tags = ID3(filename)
     tags['TPE1'] = TPE1(encoding=3, text=artist)             # TPE1 Lead Artist/Performer/Soloist/Group
@@ -671,7 +688,7 @@ def set_audio_tags_mutagen(filename, artists, name, album_name, release_year, di
                         type=3,
                         desc=u'0',
                         data=requests.get(image_url).content)
-   #tags['TCON'] = TCON(encoding=3, text=genre)              # TCON Genre - TODO
+    tags['TCON'] = TCON(encoding=3, text=genre)              # TCON Genre - TODO
     tags.save()
 
 
@@ -689,6 +706,14 @@ def conv_artist_format(artists):
     formatted = ""
     for artist in artists:
         formatted += artist + ", "
+    return formatted[:-2]
+
+
+def conv_genre_format(genres):
+    """ Returns converted genre format """
+    formatted = ""
+    for genre in genres:
+        formatted += genre + ", "
     return formatted[:-2]
 
 
@@ -843,12 +868,17 @@ def add_to_archive(song_id: str, filename: str, author_name: str, song_name: str
 # Functions directly related to downloading stuff
 def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value='', disable_progressbar=False):
     """ Downloads raw song audio from Spotify """
-    global ROOT_PATH, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED, MUSIC_FORMAT, RAW_AUDIO_AS_IS, ANTI_BAN_WAIT_TIME, OVERRIDE_AUTO_WAIT, ALBUM_IN_FILENAME
+    global ROOT_PATH, SKIP_EXISTING_FILES, SKIP_PREVIOUSLY_DOWNLOADED, MUSIC_FORMAT, RAW_AUDIO_AS_IS, ANTI_BAN_WAIT_TIME, OVERRIDE_AUTO_WAIT, ALBUM_IN_FILENAME, META_GENRE
+    
+    META_GENRE = False    
     try:
     	# TODO: ADD disc_number IF > 1 
-        artists, album_name, name, image_url, release_year, disc_number, track_number, scraped_song_id, is_playable = get_song_info(
+        artists, album_name, name, image_url, release_year, disc_number, track_number, scraped_song_id, is_playable, artist_id = get_song_info(
             track_id_str)
 
+        info = get_artist_info(artist_id)
+        genre = conv_genre_format(info['genres'])
+ 
         _artist = artists[0]
         if prefix:
             _track_number = str(track_number).zfill(2)
@@ -922,8 +952,9 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
                             if fail > REINTENT_DOWNLOAD:
                                 break
 
-
+                    file.close()
                     if not RAW_AUDIO_AS_IS and not "ogg" in MUSIC_FORMAT:
+                        META_GENRE = genre
                         convert_audio_format(filename_raw, filename)
                         if USE_MUTAGEN:
                             set_audio_tags_mutagen(filename, artists, name, album_name,
@@ -936,9 +967,13 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
                         # "Raw" ogg not needed, we have a mp3 now
                         if os.path.exists(filename_raw):
                             os.remove(filename_raw)
+
+                        META_GENRE = False
  
                     if not RAW_AUDIO_AS_IS and "ogg" in MUSIC_FORMAT:
+                        META_GENRE = genre
                         print("TODO - Send OGG file to be tagged.")
+                        META_GENRE = False
  
                     if not OVERRIDE_AUTO_WAIT:
                         time.sleep(ANTI_BAN_WAIT_TIME)
