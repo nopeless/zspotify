@@ -31,6 +31,10 @@ USE_MUTAGEN = True
 
 if USE_MUTAGEN:
     from mutagen.id3 import ID3, TPE1, TIT2, TRCK, TALB, APIC, TPE2, TDRC, TDOR, TPOS, COMM, TCON
+    from mutagen.oggvorbis import OggVorbis
+    from mutagen.flac import Picture
+    import base64
+
 else:
     import music_tag
 
@@ -639,6 +643,22 @@ def convert_audio_format(fromfilename, tofilename):
     raw_audio.export(tofilename, format=MUSIC_FORMAT, bitrate=bitrate)
 
 
+def encode_ogg_coverart(art_url, desc):
+    picture = Picture()
+    picture.data = requests.get(art_url).content
+    #picture.type = 17
+    picture.type = 3
+    picture.desc = u'' + desc + ''
+    picture.mime = u"image/jpeg"
+    picture.width = 640
+    picture.height = 640
+    picture.depth = 24
+    picture_data = picture.write()
+    encoded_data = base64.b64encode(picture_data)
+    
+    return encoded_data.decode("ascii")
+
+
 def set_audio_tags(filename, artists, name, album_name, release_year, disc_number, track_number, track_id_str):
     """ sets music_tag metadata """
     #print("###   SETTING MUSIC TAGS   ###")
@@ -655,7 +675,6 @@ def set_audio_tags(filename, artists, name, album_name, release_year, disc_numbe
 
 def set_audio_tags_mutagen(filename, artists, name, album_name, release_year, disc_number, track_number, track_id_str, image_url):
     """ sets music_tag metadata using mutagen """
-    albumart = requests.get(image_url).content
     artist = conv_artist_format(artists)
     check_various_artists = "Various Artists" in filename
     if check_various_artists:
@@ -672,24 +691,41 @@ def set_audio_tags_mutagen(filename, artists, name, album_name, release_year, di
     if META_GENRE:
         genre = META_GENRE
 
-    tags = ID3(filename)
-    tags['TPE1'] = TPE1(encoding=3, text=artist)             # TPE1 Lead Artist/Performer/Soloist/Group
-    tags['TIT2'] = TIT2(encoding=3, text=name)               # TIT2 Title/songname/content description
-    tags['TALB'] = TALB(encoding=3, text=album_name)         # TALB Album/Movie/Show title
-    tags['TDRC'] = TDRC(encoding=3, text=release_year)       # TDRC Recording time
-    tags['TDOR'] = TDOR(encoding=3, text=release_year)       # TDOR Original release time
-    tags['TPOS'] = TPOS(encoding=3, text=str(disc_number))   # TPOS Part of a set
-    tags['TRCK'] = TRCK(encoding=3, text=str(track_number))  # TRCK Track number/Position in set
-    tags['COMM'] = COMM(encoding=3, lang=u'eng', text=u'' + track_id_str + '') #COMM User comment
-    tags['TPE2'] = TPE2(encoding=3, text=album_artist)       # TPE2 Band/orchestra/accompaniment
-    tags['APIC'] = APIC(                                     # APIC Attached (or linked) Picture.
-                        encoding=3,
-                        mime='image/jpeg',
-                        type=3,
-                        desc=u'0',
-                        data=requests.get(image_url).content)
-    tags['TCON'] = TCON(encoding=3, text=genre)              # TCON Genre - TODO
-    tags.save()
+    if MUSIC_FORMAT == "mp3":
+        tags = ID3(filename)
+        tags['TPE1'] = TPE1(encoding=3, text=artist)             # TPE1 Lead Artist/Performer/Soloist/Group
+        tags['TIT2'] = TIT2(encoding=3, text=name)               # TIT2 Title/songname/content description
+        tags['TALB'] = TALB(encoding=3, text=album_name)         # TALB Album/Movie/Show title
+        tags['TDRC'] = TDRC(encoding=3, text=release_year)       # TDRC Recording time
+        tags['TDOR'] = TDOR(encoding=3, text=release_year)       # TDOR Original release time
+        tags['TPOS'] = TPOS(encoding=3, text=str(disc_number))   # TPOS Part of a set
+        tags['TRCK'] = TRCK(encoding=3, text=str(track_number))  # TRCK Track number/Position in set
+        tags['COMM'] = COMM(encoding=3, lang=u'eng', text=u'' + track_id_str + '') #COMM User comment
+        tags['TPE2'] = TPE2(encoding=3, text=album_artist)       # TPE2 Band/orchestra/accompaniment
+        tags['APIC'] = APIC(                                     # APIC Attached (or linked) Picture.
+                            encoding=3,
+                            mime='image/jpeg',
+                            type=3,
+                            desc=u'0',
+                            data=requests.get(image_url).content)
+        tags['TCON'] = TCON(encoding=3, text=genre)              # TCON Genre - TODO
+        tags.save()
+
+    if MUSIC_FORMAT == "ogg":
+        tags = OggVorbis(filename)
+        print("OGG LOADED: " + filename + "\n")
+        
+        tags['TITLE'] = name
+        #tags['ARTIST'] = artist
+        #tags['TRACKNUMBER'] = str(track_number)
+        #tags['DISCNUMBER'] = str(disc_number)
+        #tags['ALBUM'] = album_name
+        #tags['ALBUMARTIST'] = album_artist
+        #tags['DATE'] = release_year
+        #tags['GENRE'] = genre
+       # tags['COMMENT'] = u'' + track_id_str
+       # tags['METADATA_BLOCK_PICTURE'] = [encode_ogg_coverart(image_url, album_name)]
+        tags.save()
 
 
 def set_music_thumbnail(filename, image_url):
@@ -972,7 +1008,8 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
  
                     if not RAW_AUDIO_AS_IS and "ogg" in MUSIC_FORMAT:
                         META_GENRE = genre
-                        print("TODO - Send OGG file to be tagged.")
+                        set_audio_tags_mutagen(filename, artists, name, album_name,
+                                                release_year, disc_number, track_number, track_id_str, image_url)
                         META_GENRE = False
  
                     if not OVERRIDE_AUTO_WAIT:
