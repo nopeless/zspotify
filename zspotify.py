@@ -380,7 +380,7 @@ def download_episode(episode_id_str):
     check_all_time = episode_id_str in get_previously_downloaded()
     episode_filename = f'{podcast_name}-{episode_name}.{MUSIC_FORMAT}'
     filename = os.path.join(ROOT_PODCAST_PATH, podcast_name, episode_filename)
-    tempfile = os.path.join(ROOT_PODCAST_PATH, podcast_name, "raw.tmp")
+    tempfile = os.path.join(ROOT_PODCAST_PATH, podcast_name, episode_filename[:-4] + "-vorbis.raw")
  
     if podcast_name is None:
         print("###   SKIPPING: (EPISODE NOT FOUND)   ###")
@@ -929,7 +929,7 @@ def download_track(track_id_str: str, extra_paths="", prefix=False, prefix_value
             song_name = f'{_artist} - {name}.{MUSIC_FORMAT}'
             filename = os.path.join(ROOT_PATH, extra_paths, song_name)
         check_all_time = scraped_song_id in get_previously_downloaded()
-        tempfile = os.path.join(ROOT_PATH, extra_paths, "raw.tmp")
+        tempfile = os.path.join(ROOT_PATH, extra_paths, song_name[:-4] + "-vorbis.raw")
 
     except Exception as e:
         print("###   SKIPPING SONG - FAILED TO QUERY METADATA   ###")
